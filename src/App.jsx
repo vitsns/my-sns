@@ -423,12 +423,15 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
           style={{ opacity: videoControlMode ? 0 : 1, pointerEvents: videoControlMode ? 'none' : 'auto' }}
         >
           <div
-            className="w-11 h-11 bg-white/15 backdrop-blur-md flex items-center justify-center"
-            style={{ clipPath: 'url(#flowerClip)' }}
+            className="w-11 h-11 backdrop-blur-md flex items-center justify-center transition-colors"
+            style={{
+              backgroundColor: !muted ? 'rgba(239,68,68,0.9)' : 'rgba(255,255,255,0.15)',
+              clipPath: 'url(#flowerClip)',
+            }}
           >
             {muted ? <VolumeX size={20} className="text-white" /> : <Volume2 size={20} className="text-white" />}
           </div>
-          <span className="text-white text-xs drop-shadow">{muted ? 'ミュート中' : '音あり'}</span>
+          <span className="text-white text-xs drop-shadow">音</span>
         </button>
 
         <button
