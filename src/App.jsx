@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, X, Share2, Play, Heart, Trash2, Lock, MoreVertical, Settings2, Volume2, VolumeX } from 'lucide-react';
+import { Plus, X, Share2, Play, Heart, Trash2, Lock, MoreVertical, Settings2, Volume2, VolumeX, Check } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // --- PIN設定 ---
@@ -328,6 +328,27 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
     );
   };
 
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const handleShare = async () => {
+    const shareUrl = `https://youtube.com/watch?v=${post.videoId}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'MECHENE', text: post.caption, url: shareUrl });
+      } catch {
+        // ユーザーが共有をキャンセルした場合などは何もしない
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 1500);
+    } catch {
+      /* noop */
+    }
+  };
+
   const toggleMute = () => {
     const next = !muted;
     setMuted(next);
@@ -435,6 +456,7 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
         </button>
 
         <button
+          onClick={handleShare}
           className="flex flex-col items-center gap-1 transition-opacity"
           style={{ opacity: videoControlMode ? 0 : 1, pointerEvents: videoControlMode ? 'none' : 'auto' }}
         >
@@ -442,7 +464,7 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
             className="w-11 h-11 bg-white/15 backdrop-blur-md flex items-center justify-center"
             style={{ clipPath: 'url(#flowerClip)' }}
           >
-            <Share2 size={20} className="text-white" />
+            {shareCopied ? <Check size={20} className="text-white" /> : <Share2 size={20} className="text-white" />}
           </div>
           <span className="text-white text-xs drop-shadow">共有</span>
         </button>
