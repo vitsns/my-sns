@@ -307,6 +307,7 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
   const [videoControlMode, setVideoControlMode] = useState(false); // true = 共有/三点メニュー非表示(動画操作優先)、false = レイヤーON(ハートタップ・共有・投稿が使える)がデフォルト
   const [muted, setMuted] = useState(true);
   const menuRef = useRef(null);
+  const iframeRef = useRef(null);
 
   const handleTap = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -317,6 +318,20 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
     setTimeout(() => {
       setHearts((prev) => prev.filter((h) => h.id !== id));
     }, 700);
+  };
+
+  // 動画を作り直さずにミュート状態だけをYouTube側に伝える(postMessage経由)
+  const sendPlayerCommand = (func) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: 'command', func, args: [] }),
+      '*'
+    );
+  };
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    sendPlayerCommand(next ? 'mute' : 'unMute');
   };
 
   // カードが非アクティブになったら、次に見た時のためにデフォルト(動画操作優先・ミュート)へ戻しておく
@@ -353,8 +368,9 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
       {/* サムネ→再生の軽量切り替え(全動画同時ロードを避ける) */}
       {isActive ? (
         <iframe
-          key={`${post.videoId}-${muted ? 'muted' : 'unmuted'}`}
-          src={`https://www.youtube.com/embed/${post.videoId}?autoplay=1&mute=${muted ? 1 : 0}&loop=1&playlist=${post.videoId}&modestbranding=1&rel=0&controls=0`}
+          ref={iframeRef}
+          key={post.videoId}
+          src={`https://www.youtube.com/embed/${post.videoId}?autoplay=1&mute=1&loop=1&playlist=${post.videoId}&modestbranding=1&rel=0&controls=0&enablejsapi=1`}
           className="w-full h-full"
           allow="autoplay; encrypted-media"
           allowFullScreen
@@ -368,6 +384,7 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
             className="w-full h-full object-cover opacity-70"
           />
           <Play className="absolute text-white/90" size={56} fill="white" />
+
         </div>
       )}
 
@@ -400,7 +417,7 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
         style={{ top: '42%', transform: 'translateY(-50%)' }}
       >
         {/* ミュート切り替え(常に表示) */}
-        <button onClick={() => setMuted((m) => !m)} className="flex flex-col items-center gap-1">
+        <button onClick={toggleMute} className="flex flex-col items-center gap-1">
           <div
             className="w-11 h-11 bg-white/15 backdrop-blur-md flex items-center justify-center"
             style={{ clipPath: 'url(#flowerClip)' }}
