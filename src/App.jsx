@@ -416,8 +416,12 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
         className="absolute right-3 flex flex-col items-center gap-5 z-10"
         style={{ top: '42%', transform: 'translateY(-50%)' }}
       >
-        {/* ミュート切り替え(常に表示) */}
-        <button onClick={toggleMute} className="flex flex-col items-center gap-1">
+        {/* ミュート切り替え(レイヤーOFFの間は非表示) */}
+        <button
+          onClick={toggleMute}
+          className="flex flex-col items-center gap-1 transition-opacity"
+          style={{ opacity: videoControlMode ? 0 : 1, pointerEvents: videoControlMode ? 'none' : 'auto' }}
+        >
           <div
             className="w-11 h-11 bg-white/15 backdrop-blur-md flex items-center justify-center"
             style={{ clipPath: 'url(#flowerClip)' }}
