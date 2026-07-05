@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, X, Share2, Play, Heart, Trash2, Lock, MoreVertical, Settings2, Volume2, VolumeX, Check } from 'lucide-react';
+import { Plus, X, Share2, Play, Heart, Trash2, Lock, MoreVertical, Settings2, Volume2, VolumeX, Check, ShoppingBag } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // --- PIN設定 ---
@@ -81,6 +81,7 @@ function UploadModal({ onClose, onPosted }) {
   const [pinChecking, setPinChecking] = useState(false);
   const [url, setUrl] = useState('');
   const [caption, setCaption] = useState('');
+  const [shopUrl, setShopUrl] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -119,6 +120,7 @@ function UploadModal({ onClose, onPosted }) {
       input_video_id: videoId,
       input_caption: caption.trim() || '(no caption)',
       input_author: 'You',
+      input_shop_url: shopUrl.trim() || null,
     });
 
     setSubmitting(false);
@@ -205,6 +207,14 @@ function UploadModal({ onClose, onPosted }) {
           placeholder="この投稿について..."
           rows={2}
           className="w-full bg-neutral-800 text-white text-sm rounded-lg px-3 py-2.5 mb-4 outline-none focus:ring-2 focus:ring-red-500 resize-none placeholder:text-neutral-500"
+        />
+
+        <label className="text-xs text-neutral-400 mb-1 block">ショップURL(任意)</label>
+        <input
+          value={shopUrl}
+          onChange={(e) => setShopUrl(e.target.value)}
+          placeholder="https://booth.pm/..."
+          className="w-full bg-neutral-800 text-white text-sm rounded-lg px-3 py-2.5 mb-4 outline-none focus:ring-2 focus:ring-red-500 placeholder:text-neutral-500"
         />
 
         <button
@@ -434,7 +444,7 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
 
       {/* 右サイドのアクションバー(右端中央に集約: ミュート・共有・削除メニュー・動画操作モード切り替え) */}
       <div
-        className="absolute right-3 flex flex-col items-center gap-5 z-10"
+        className="absolute right-3 flex flex-col items-center gap-3 z-10"
         style={{ top: '42%', transform: 'translateY(-50%)' }}
       >
         {/* ミュート切り替え(レイヤーOFFの間は非表示) */}
@@ -482,6 +492,23 @@ function VideoCard({ post, isActive, onRequestDelete, onControlModeChange }) {
           </div>
           <span className="text-white text-xs drop-shadow">レイヤー</span>
         </button>
+
+        {/* ショップリンク(投稿にURLが設定されてる時だけ表示、レイヤーOFFの間は非表示) */}
+        {post.shopUrl && (
+          <button
+            onClick={() => window.open(post.shopUrl, '_blank', 'noopener,noreferrer')}
+            className="flex flex-col items-center gap-1 transition-opacity"
+            style={{ opacity: videoControlMode ? 0 : 1, pointerEvents: videoControlMode ? 'none' : 'auto' }}
+          >
+            <div
+              className="w-11 h-11 bg-white/15 backdrop-blur-md flex items-center justify-center"
+              style={{ clipPath: 'url(#flowerClip)' }}
+            >
+              <ShoppingBag size={18} className="text-white" />
+            </div>
+            <span className="text-white text-xs drop-shadow">ショップ</span>
+          </button>
+        )}
 
         {/* 共有ボタンの下に3点メニュー(削除) */}
         <div
@@ -549,7 +576,7 @@ export default function App() {
   const fetchPosts = async () => {
     const { data, error } = await supabase
       .from('posts')
-      .select('id, video_id, caption, author')
+      .select('id, video_id, caption, author, shop_url')
       .order('created_at', { ascending: false });
 
     if (!error && data) {
@@ -559,6 +586,7 @@ export default function App() {
           videoId: row.video_id,
           caption: row.caption,
           author: row.author,
+          shopUrl: row.shop_url,
         }))
       );
     }
