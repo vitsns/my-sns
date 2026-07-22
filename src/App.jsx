@@ -550,9 +550,15 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
       } catch {
         return;
       }
-      if (msg.event !== 'onStateChange') return;
-      if (msg.info === 1) setPlaying(true);  // 再生中
-      if (msg.info === 2) setPlaying(false); // 一時停止
+      if (msg.event !== 'onStateChange' && msg.event !== 'infoDelivery') return;
+
+      // 新しい埋め込みプレイヤーはinfoDelivery、古い形式はonStateChangeで状態を送ってくる
+      let state = null;
+      if (msg.event === 'onStateChange') state = msg.info;
+      else if (msg.info) state = msg.info.playerState;
+
+      if (state === 1) setPlaying(true);  // 再生中
+      if (state === 2) setPlaying(false); // 一時停止
     };
     window.addEventListener('message', handleMessage);
 
