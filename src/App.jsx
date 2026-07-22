@@ -534,6 +534,8 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
   const toggleMute = () => {
     const next = !muted;
     onMutedChange(next);
+    // 自動送信が残っていると、押した直後に元の設定へ戻されてしまうので打ち切る
+    stopRetries();
     sendPlayerCommand(next ? 'mute' : 'unMute');
   };
 
@@ -547,11 +549,14 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
 
     // iOSは、タップ無しでミュート解除されると動画をその場で止める。
     // 止まっていると内容を見ないままスクロールされてしまうので再生の継続を優先し、
-    // 新しい動画は必ずミュートで流す。サウンドボタンの表示もOFFに合わせる。
+    // 新しい動画はミュートのまま流す。サウンドボタンの表示もOFFに合わせる。
     if (IS_IOS && !muted) onMutedChange(true);
 
-    const command = IS_IOS ? 'mute' : muted ? 'mute' : 'unMute';
-    const send = () => sendPlayerCommand(command);
+    // 埋め込みURLに mute=1 を入れてあるので、動画は最初から必ずミュートで始まる。
+    // つまり送る必要があるのは「音を出す」指示だけで、ミュートは送るだけ無駄。
+    if (IS_IOS || muted) return;
+
+    const send = () => sendPlayerCommand('unMute');
 
     // プレイヤーの準備が終わる時刻は読めないので、0.4秒おきに4秒間くり返す
     send();
