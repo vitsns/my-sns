@@ -460,7 +460,7 @@ function EditModal({ post, onClose, onUpdated }) {
   );
 }
 
-function VideoCard({ post, isActive, muted, onMutedChange, onRequestEdit, onRequestDelete, onControlModeChange }) {
+function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEdit, onRequestDelete, onControlModeChange }) {
   const [hearts, setHearts] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [videoControlMode, setVideoControlMode] = useState(false); // true = 共有/三点メニュー非表示(動画操作優先)、false = レイヤーON(ハートタップ・共有・投稿が使える)がデフォルト
@@ -500,7 +500,7 @@ function VideoCard({ post, isActive, muted, onMutedChange, onRequestEdit, onRequ
     const shareUrl = `${window.location.origin}${window.location.pathname}?post=${post.id}`;
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'MECHENE', text: post.caption, url: shareUrl });
+        await navigator.share({ title: siteName || 'RECHENE', text: post.caption, url: shareUrl });
       } catch {
         // ユーザーが共有をキャンセルした場合などは何もしない
       }
@@ -756,6 +756,7 @@ export default function App() {
   const [showUpload, setShowUpload] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null); // 削除確認中のpost id
   const [editTarget, setEditTarget] = useState(null); // 編集中のpostオブジェクト
+  const [siteName, setSiteName] = useState(''); // 共有時に使うサービス名(DBから取得)
   const containerRef = useRef(null);
 
   const fetchPosts = async () => {
@@ -789,6 +790,11 @@ export default function App() {
 
   useEffect(() => {
     fetchPosts();
+
+    // 共有時に使うサービス名をDBから取得
+    supabase.rpc('get_site_name').then(({ data }) => {
+      if (data) setSiteName(data);
+    });
   }, []);
 
   useEffect(() => {
@@ -840,6 +846,7 @@ export default function App() {
               isActive={i === activeIndex}
               muted={globalMuted}
               onMutedChange={setGlobalMuted}
+              siteName={siteName}
               onRequestDelete={(id) => setDeleteTarget(id)}
               onRequestEdit={(p) => setEditTarget(p)}
               onControlModeChange={setActiveControlMode}
