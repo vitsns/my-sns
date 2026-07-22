@@ -73,6 +73,28 @@ function extractYouTubeId(url) {
   return null;
 }
 
+// YouTube IFrame Player APIを一度だけ読み込む。
+// 読み込み完了を待てるので「決め打ちの待ち時間を置いてコマンドを投げる」必要がなくなる。
+let ytApiPromise = null;
+function loadYouTubeApi() {
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve) => {
+    if (window.YT && window.YT.Player) {
+      resolve(window.YT);
+      return;
+    }
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof prev === 'function') prev();
+      resolve(window.YT);
+    };
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+  });
+  return ytApiPromise;
+}
+
 function UploadModal({ onClose, onPosted }) {
   const vh = useViewportHeight();
   const [pinKnown, setPinKnown] = useState(!!getStoredPin());
@@ -466,32 +488,46 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
   const [videoControlMode, setVideoControlMode] = useState(false); // true = 共有/三点メニュー非表示(動画操作優先)、false = レイヤーON(ハートタップ・共有・投稿が使える)がデフォルト
   const [playing, setPlaying] = useState(true);
   const menuRef = useRef(null);
-  const iframeRef = useRef(null);
+  const playerRef = useRef(null);
+  const mountId = `yt-player-${post.id}`;
 
-  // 動画を作り直さずにコマンドだけをYouTube側に伝える(postMessage経由)
-  const sendPlayerCommand = (func) => {
-    iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: 'command', func, args: [] }),
-      '*'
-    );
-  };
+  // 最新のミュート状態を、プレイヤー生成時のコールバックから参照するための控え
+  const mutedRef = useRef(muted);
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
 
-  const handleTap = (e) => {
-    // タップで再生/一時停止を切り替えつつ、ハートも飛ばす
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  const spawnHeart = (clientX, clientY, target) => {
+    const rect = target.getBoundingClientRect();
     const id = Date.now() + Math.random();
-    setHearts((prev) => [...prev, { id, x, y }]);
+    setHearts((prev) => [...prev, { id, x: clientX - rect.left, y: clientY - rect.top }]);
     setTimeout(() => {
       setHearts((prev) => prev.filter((h) => h.id !== id));
     }, 700);
   };
 
   const togglePlay = () => {
-    const next = !playing;
-    setPlaying(next);
-    sendPlayerCommand(next ? 'playVideo' : 'pauseVideo');
+    const p = playerRef.current;
+    if (!p) return;
+    // 実際の再生状態はonStateChangeで受け取るので、ここでは指示だけ出す
+    if (playing) p.pauseVideo();
+    else p.playVideo();
+  };
+
+  // スクロールの指の動きを「タップ」と誤認しないよう、移動量と時間で切り分ける
+  const pressRef = useRef(null);
+
+  const handlePointerDown = (e) => {
+    pressRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+  };
+
+  const handlePointerUp = (e) => {
+    const start = pressRef.current;
+    pressRef.current = null;
+    if (!start) return;
+    if (Math.abs(e.clientX - start.x) > 10 || Math.abs(e.clientY - start.y) > 10) return; // ドラッグ・スクロール
+    if (Date.now() - start.t > 400) return; // 長押し
+
+    spawnHeart(e.clientX, e.clientY, e.currentTarget);
+    togglePlay();
   };
 
   const [shareCopied, setShareCopied] = useState(false);
@@ -518,23 +554,65 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
   const toggleMute = () => {
     const next = !muted;
     onMutedChange(next);
-    sendPlayerCommand(next ? 'mute' : 'unMute');
+    const p = playerRef.current;
+    if (!p) return;
+    if (next) p.mute();
+    else p.unMute();
   };
 
-  // アクティブになった時、前のカードから引き継いだ音設定を適用し、再生し直す
+  // アクティブな間だけプレイヤーを生成する。
+  // 準備完了(onReady)を待ってから音設定を適用するので、取りこぼしが起きない。
   useEffect(() => {
     if (!isActive) {
       setVideoControlMode(false);
       setPlaying(true);
       return;
     }
-    // iframeの準備が整うまで少し待ってからコマンドを送る
-    const timer = setTimeout(() => {
-      sendPlayerCommand(muted ? 'mute' : 'unMute');
-      sendPlayerCommand('playVideo');
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [isActive]);
+
+    let disposed = false;
+    let player = null;
+
+    loadYouTubeApi().then((YT) => {
+      if (disposed) return;
+      player = new YT.Player(mountId, {
+        videoId: post.videoId,
+        playerVars: {
+          autoplay: 1,
+          mute: 1, // 自動再生を通すため必ずミュートで開始し、準備完了後に本来の設定へ戻す
+          loop: 1,
+          playlist: post.videoId,
+          modestbranding: 1,
+          rel: 0,
+          controls: 0,
+          playsinline: 1,
+        },
+        events: {
+          onReady: (e) => {
+            if (disposed) return;
+            playerRef.current = e.target;
+            if (mutedRef.current) e.target.mute();
+            else e.target.unMute();
+            e.target.playVideo();
+          },
+          onStateChange: (e) => {
+            if (disposed) return;
+            if (e.data === YT.PlayerState.PLAYING) setPlaying(true);
+            if (e.data === YT.PlayerState.PAUSED) setPlaying(false);
+          },
+        },
+      });
+    });
+
+    return () => {
+      disposed = true;
+      playerRef.current = null;
+      try {
+        if (player && typeof player.destroy === 'function') player.destroy();
+      } catch {
+        /* すでにDOMから外れている場合など。停止自体はiframe破棄で達成される */
+      }
+    };
+  }, [isActive, post.videoId]);
 
   // アクティブなカードの操作モード状態だけを親(App)に伝える
   useEffect(() => {
@@ -561,15 +639,10 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
       <style>{HEART_POP_STYLE}</style>
       {/* サムネ→再生の軽量切り替え(全動画同時ロードを避ける) */}
       {isActive ? (
-        <iframe
-          ref={iframeRef}
-          key={post.videoId}
-          src={`https://www.youtube.com/embed/${post.videoId}?autoplay=1&mute=1&loop=1&playlist=${post.videoId}&modestbranding=1&rel=0&controls=0&enablejsapi=1`}
-          className="w-full h-full"
-          allow="autoplay; encrypted-media"
-          allowFullScreen
-          title={post.caption}
-        />
+        <div className="w-full h-full">
+          {/* このdivはPlayer APIによってiframeに置き換わる */}
+          <div id={mountId} key={post.videoId} className="w-full h-full" />
+        </div>
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-neutral-900">
           <img
@@ -586,10 +659,9 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
       {!videoControlMode && (
         <div
           className="absolute inset-0 z-[5]"
-          onClick={(e) => {
-            handleTap(e);
-            togglePlay();
-          }}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => { pressRef.current = null; }}
         />
       )}
 
