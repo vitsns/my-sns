@@ -536,19 +536,42 @@ function VideoCard({ post, isActive, muted, onMutedChange, siteName, onRequestEd
     return () => clearTimeout(timer);
   }, [isActive]);
 
-  // 上の一回きりの指示は、プレイヤーの準備が遅れると届かずに捨てられる。
-  // 音の設定だけは届くまで数秒くり返し送る(同じ指示を何度送っても副作用はない)。
+  // プレイヤーの実際の再生状態を受け取る。
+  // これが無いと、iOSが勝手に一時停止した時にアプリ側は「再生中」のままになり、
+  // タップ1回目が空振りして2回タップしないと再生できない。
   useEffect(() => {
     if (!isActive) return;
-    const send = () => sendPlayerCommand(muted ? 'mute' : 'unMute');
-    send();
-    const interval = setInterval(send, 400);
-    const stop = setTimeout(() => clearInterval(interval), 4000);
-    return () => {
-      clearInterval(interval);
-      clearTimeout(stop);
+
+    const handleMessage = (e) => {
+      if (typeof e.data !== 'string' || !e.origin.includes('youtube')) return;
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (msg.event !== 'onStateChange') return;
+      if (msg.info === 1) setPlaying(true);  // 再生中
+      if (msg.info === 2) setPlaying(false); // 一時停止
     };
-  }, [isActive, muted]);
+    window.addEventListener('message', handleMessage);
+
+    // 状態を通知してもらうよう、プレイヤー側に登録を要求する
+    const askForUpdates = () => {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: 'listening', id: post.id, channel: 'widget' }),
+        '*'
+      );
+    };
+    const t1 = setTimeout(askForUpdates, 500);
+    const t2 = setTimeout(askForUpdates, 1500);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isActive]);
 
   // アクティブなカードの操作モード状態だけを親(App)に伝える
   useEffect(() => {
